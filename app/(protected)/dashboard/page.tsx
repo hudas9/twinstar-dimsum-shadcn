@@ -1,7 +1,3 @@
-import Sidebar from "@/components/Sidebar";
-
-// const BASE = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
-
 async function fetchDashboardData() {}
 
 export default async function DashboardPage() {
