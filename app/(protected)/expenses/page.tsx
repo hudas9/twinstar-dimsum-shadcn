@@ -76,7 +76,7 @@ export default function ExpensesPage() {
         <h1 className="text-xl font-semibold">Expenses</h1>
 
         <Button asChild>
-          <Link href="/incomes/create">
+          <Link href="/expenses/create">
             <Plus className="mr-2 h-4 w-4" />
             Add Expense
           </Link>
@@ -91,7 +91,7 @@ export default function ExpensesPage() {
 
         <CardContent>
           <div className="w-full overflow-x-auto">
-            <Table>
+            <Table className="min-w-max">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-center">Date</TableHead>

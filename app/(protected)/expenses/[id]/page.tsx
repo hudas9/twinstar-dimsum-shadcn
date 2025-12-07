@@ -1,7 +1,7 @@
 import ExpenseForm from "@/components/ExpenseForm";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-interface IncomePage {
+interface ExpensePage {
   params: Promise<{ id: string }>;
 }
 

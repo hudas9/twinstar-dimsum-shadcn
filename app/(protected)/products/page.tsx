@@ -73,7 +73,7 @@ export default function ProductPage() {
         <h1 className="text-xl font-semibold">Products</h1>
 
         <Button asChild>
-          <Link href="/members/create">
+          <Link href="/products/create">
             <Plus className="mr-2 h-4 w-4" />
             Add Product
           </Link>

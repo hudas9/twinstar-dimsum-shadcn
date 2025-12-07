@@ -95,17 +95,8 @@ export async function GET(req: Request) {
     // -------------------------------------
     // AGGREGATE TOTALS
     // -------------------------------------
-    const totalRevenue = ordersArr.reduce((s, o) => s + (o.total || 0), 0);
     const totalExpenses = expensesArr.reduce((s, e) => s + (e.amount || 0), 0);
     const totalIncomes = incomesArr.reduce((s, i) => s + (i.amount || 0), 0);
-
-    // -------------------------------------
-    // PAYMENT METHODS SUMMARY
-    // -------------------------------------
-    const pm: Record<string, number> = {};
-    (payments || []).forEach((p) => {
-      pm[p.method] = (pm[p.method] || 0) + (p.amount || 0);
-    });
 
     // -------------------------------------
     // BUILD INCOME_ROWS
@@ -178,13 +169,19 @@ export async function GET(req: Request) {
     }
 
     // -------------------------------------
-    // FINAL BALANCE
+    // SUMMARY BY PAYMENT METHOD
     // -------------------------------------
-    const finalBalance =
-      Number(starting.cash || 0) +
-      Number(starting.qris || 0) +
-      (totalRevenue + totalIncomes) -
-      totalExpenses;
+    const incomeByMethod = { cash: 0, qris: 0 };
+    income_rows.forEach((r) => {
+      const method = r.payment_method as "cash" | "qris";
+      incomeByMethod[method] = (incomeByMethod[method] || 0) + r.total;
+    });
+
+    const expenseByMethod = { cash: 0, qris: 0 };
+    expense_rows.forEach((r) => {
+      const method = r.payment_method as "cash" | "qris";
+      expenseByMethod[method] = (expenseByMethod[method] || 0) + r.total;
+    });
 
     // -------------------------------------
     // FINAL RETURN
@@ -197,12 +194,16 @@ export async function GET(req: Request) {
         qris: Number(starting.qris || 0),
       },
       summary: {
-        total_revenue: totalRevenue,
         total_incomes: totalIncomes,
         total_expenses: totalExpenses,
-        final_balance: finalBalance,
+        income_by_method: incomeByMethod,
+        expense_by_method: expenseByMethod,
+        final_balance:
+          Number(starting.cash || 0) +
+          Number(starting.qris || 0) +
+          totalIncomes -
+          totalExpenses,
       },
-      payment_methods: pm,
       income_rows,
       expense_rows,
       daily,

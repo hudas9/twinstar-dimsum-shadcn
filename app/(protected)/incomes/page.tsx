@@ -91,7 +91,7 @@ export default function IncomesPage() {
 
         <CardContent>
           <div className="w-full overflow-x-auto">
-            <Table>
+            <Table className="min-w-max">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-center">Date</TableHead>
