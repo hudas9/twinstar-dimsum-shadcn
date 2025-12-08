@@ -34,7 +34,7 @@ type Income = {
   title: string;
   payment_method: string;
   amount: number;
-  created_at: string;
+  date: string;
 };
 
 export default function IncomesPage() {
@@ -118,7 +118,7 @@ export default function IncomesPage() {
                   incomes.map((income) => (
                     <TableRow key={income.id} className="hover:bg-muted/30">
                       <TableCell className="text-center">
-                        {new Date(income.created_at).toLocaleDateString()}
+                        {new Date(income.date).toLocaleDateString()}
                       </TableCell>
 
                       <TableCell>{income.title}</TableCell>

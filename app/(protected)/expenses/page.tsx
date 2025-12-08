@@ -34,7 +34,7 @@ type Expense = {
   title: string;
   payment_method: string;
   amount: number;
-  created_at: string;
+  date: string;
 };
 
 export default function ExpensesPage() {
@@ -118,7 +118,7 @@ export default function ExpensesPage() {
                   expenses.map((expense) => (
                     <TableRow key={expense.id} className="hover:bg-muted/30">
                       <TableCell className="text-center">
-                        {new Date(expense.created_at).toLocaleDateString()}
+                        {new Date(expense.date).toLocaleDateString()}
                       </TableCell>
 
                       <TableCell>{expense.title}</TableCell>
