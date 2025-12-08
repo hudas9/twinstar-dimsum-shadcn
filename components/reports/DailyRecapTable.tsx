@@ -26,10 +26,13 @@ export function DailyRecapTable({ rows = [], formatRp }: any) {
           <TableHeader>
             <TableRow>
               <TableHead>Tanggal</TableHead>
-              <TableHead>Pendapatan</TableHead>
-              <TableHead>Pemasukan</TableHead>
-              <TableHead>Pengeluaran</TableHead>
-              <TableHead>Saldo</TableHead>
+              <TableHead>Income Cash</TableHead>
+              <TableHead>Income Qris</TableHead>
+              <TableHead>Total Income</TableHead>
+              <TableHead>Expense Cash</TableHead>
+              <TableHead>Expense Qris</TableHead>
+              <TableHead>Total Expense</TableHead>
+              <TableHead>Net</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -43,17 +46,18 @@ export function DailyRecapTable({ rows = [], formatRp }: any) {
             )}
 
             {rows.map((r: any, index: number) => {
-              const saldo = r.revenue + r.incomes - r.expenses;
-
               return (
                 <TableRow key={index}>
                   <TableCell>
                     {new Date(r.date).toLocaleDateString("id-ID")}
                   </TableCell>
-                  <TableCell>{formatRp(r.revenue)}</TableCell>
-                  <TableCell>{formatRp(r.incomes)}</TableCell>
-                  <TableCell>{formatRp(r.expenses)}</TableCell>
-                  <TableCell>{formatRp(saldo)}</TableCell>
+                  <TableCell>{formatRp(r.income_cash)}</TableCell>
+                  <TableCell>{formatRp(r.income_qris)}</TableCell>
+                  <TableCell>{formatRp(r.total_income)}</TableCell>
+                  <TableCell>{formatRp(r.expense_cash)}</TableCell>
+                  <TableCell>{formatRp(r.expense_qris)}</TableCell>
+                  <TableCell>{formatRp(r.total_expense)}</TableCell>
+                  <TableCell>{formatRp(r.net)}</TableCell>
                 </TableRow>
               );
             })}

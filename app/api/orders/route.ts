@@ -82,7 +82,6 @@ export async function POST(request: Request) {
         member_id: member_id ?? null,
         date,
         total,
-        payment_method: null, // sudah tidak dipakai
       },
     ])
     .select()

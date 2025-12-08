@@ -1,228 +1,258 @@
 import { NextResponse } from "next/server";
-import { getSearchParams } from "@/lib/getRequestUrl";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-export async function GET(req: Request) {
-  try {
-    const searchParams = getSearchParams(req);
-    const start = searchParams.get("start");
-    const end = searchParams.get("end");
+/* -----------------------------------------
+   TYPES
+-------------------------------------------- */
 
-    if (!start || !end) {
-      return NextResponse.json(
-        { error: "start & end query parameters required (YYYY-MM-DD)" },
-        { status: 400 }
-      );
-    }
+type PaymentMethod = "cash" | "qris";
 
-    const supabase = supabaseServer();
-
-    // -------------------------------------
-    // GET STARTING BALANCE (previous month)
-    // -------------------------------------
-    const startDate = new Date(start);
-    const prev = new Date(startDate);
-    prev.setMonth(startDate.getMonth() - 1);
-
-    const prevMonth = prev.getMonth() + 1;
-    const prevYear = prev.getFullYear();
-
-    const { data: startingData, error: sbError } = await supabase
-      .from("starting_balances")
-      .select("cash, qris")
-      .eq("month", prevMonth)
-      .eq("year", prevYear)
-      .limit(1)
-      .single();
-
-    if (sbError && sbError.code !== "PGRST116") {
-      return NextResponse.json({ error: sbError.message }, { status: 500 });
-    }
-
-    const starting = startingData || { cash: 0, qris: 0 };
-
-    // -------------------------------------
-    // DATA ORDERS
-    // -------------------------------------
-    const { data: orders, error: ordersError } = await supabase
-      .from("orders")
-      .select("id, total, date, payment_method")
-      .gte("date", `${start} 00:00:00`)
-      .lte("date", `${end} 23:59:59`);
-
-    if (ordersError)
-      return NextResponse.json({ error: ordersError.message }, { status: 500 });
-
-    // -------------------------------------
-    // PAYMENT RECORDS
-    // -------------------------------------
-    const { data: payments, error: paymentsError } = await supabase
-      .from("payment_records")
-      .select("method, amount, created_at")
-      .gte("created_at", `${start} 00:00:00`)
-      .lte("created_at", `${end} 23:59:59`);
-
-    if (paymentsError)
-      return NextResponse.json(
-        { error: paymentsError.message },
-        { status: 500 }
-      );
-
-    // -------------------------------------
-    // EXPENSES & INCOMES
-    // -------------------------------------
-    const [{ data: expenses }, { data: incomes }] = await Promise.all([
-      supabase
-        .from("expenses")
-        .select("amount, date, payment_method")
-        .gte("date", `${start} 00:00:00`)
-        .lte("date", `${end} 23:59:59`),
-
-      supabase
-        .from("incomes")
-        .select("amount, date, payment_method")
-        .gte("date", `${start} 00:00:00`)
-        .lte("date", `${end} 23:59:59`),
-    ]).catch(() => [{ data: [] }, { data: [] }]);
-
-    // -------------------------------------
-    // Normalized arrays
-    // -------------------------------------
-    const ordersArr = orders || [];
-    const expensesArr = expenses || [];
-    const incomesArr = incomes || [];
-
-    // -------------------------------------
-    // AGGREGATE TOTALS
-    // -------------------------------------
-    const totalExpenses = expensesArr.reduce((s, e) => s + (e.amount || 0), 0);
-    const totalIncomes = incomesArr.reduce((s, i) => s + (i.amount || 0), 0);
-
-    // -------------------------------------
-    // BUILD INCOME_ROWS
-    // -------------------------------------
-    const incomeMap: Record<string, number> = {};
-    ordersArr.forEach((o) => {
-      const dateStr = (o.date || "").slice(0, 10);
-      const key = `${dateStr}|${o.payment_method || "cash"}`;
-      incomeMap[key] = (incomeMap[key] || 0) + (o.total || 0);
-    });
-
-    incomesArr.forEach((i) => {
-      const dateStr = (i.date || "").slice(0, 10);
-      const key = `${dateStr}|${i.payment_method || "cash"}`;
-      incomeMap[key] = (incomeMap[key] || 0) + (i.amount || 0);
-    });
-
-    const income_rows = Object.entries(incomeMap)
-      .map(([k, v]) => {
-        const [date, method] = k.split("|");
-        return { date, payment_method: method, total: v };
-      })
-      .sort(
-        (a, b) =>
-          a.date.localeCompare(b.date) ||
-          a.payment_method.localeCompare(b.payment_method)
-      );
-
-    // -------------------------------------
-    // BUILD EXPENSE_ROWS
-    // -------------------------------------
-    const expenseMap: Record<string, number> = {};
-    expensesArr.forEach((e) => {
-      const dateStr = (e.date || "").slice(0, 10);
-      const key = `${dateStr}|${e.payment_method || "cash"}`;
-      expenseMap[key] = (expenseMap[key] || 0) + (e.amount || 0);
-    });
-
-    const expense_rows = Object.entries(expenseMap)
-      .map(([k, v]) => {
-        const [date, method] = k.split("|");
-        return { date, payment_method: method, total: v };
-      })
-      .sort(
-        (a, b) =>
-          a.date.localeCompare(b.date) ||
-          a.payment_method.localeCompare(b.payment_method)
-      );
-
-    // -------------------------------------
-    // DAILY SUMMARY
-    // -------------------------------------
-    const daily: Array<any> = [];
-    const dateRange = generateDateRange(start, end);
-
-    for (const dateStr of dateRange) {
-      const revenue = ordersArr
-        .filter((o) => (o.date || "").slice(0, 10) === dateStr)
-        .reduce((s, o) => s + (o.total || 0), 0);
-
-      const inc = incomesArr
-        .filter((i) => (i.date || "").slice(0, 10) === dateStr)
-        .reduce((s, i) => s + (i.amount || 0), 0);
-
-      const exp = expensesArr
-        .filter((e) => (e.date || "").slice(0, 10) === dateStr)
-        .reduce((s, e) => s + (e.amount || 0), 0);
-
-      daily.push({ date: dateStr, revenue, incomes: inc, expenses: exp });
-    }
-
-    // -------------------------------------
-    // SUMMARY BY PAYMENT METHOD
-    // -------------------------------------
-    const incomeByMethod = { cash: 0, qris: 0 };
-    income_rows.forEach((r) => {
-      const method = r.payment_method as "cash" | "qris";
-      incomeByMethod[method] = (incomeByMethod[method] || 0) + r.total;
-    });
-
-    const expenseByMethod = { cash: 0, qris: 0 };
-    expense_rows.forEach((r) => {
-      const method = r.payment_method as "cash" | "qris";
-      expenseByMethod[method] = (expenseByMethod[method] || 0) + r.total;
-    });
-
-    // -------------------------------------
-    // FINAL RETURN
-    // -------------------------------------
-    return NextResponse.json({
-      start,
-      end,
-      starting: {
-        cash: Number(starting.cash || 0),
-        qris: Number(starting.qris || 0),
-      },
-      summary: {
-        total_incomes: totalIncomes,
-        total_expenses: totalExpenses,
-        income_by_method: incomeByMethod,
-        expense_by_method: expenseByMethod,
-        final_balance:
-          Number(starting.cash || 0) +
-          Number(starting.qris || 0) +
-          totalIncomes -
-          totalExpenses,
-      },
-      income_rows,
-      expense_rows,
-      daily,
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
-  }
+interface PaymentRecord {
+  id: number;
+  order_id: number;
+  method: PaymentMethod;
+  amount: number;
+  orders: {
+    date: string | null;
+  } | null;
 }
 
-// Helper: generate list of YYYY-MM-DD
-function generateDateRange(start: string, end: string): string[] {
-  const arr: string[] = [];
-  let cur = new Date(start);
-  const last = new Date(end);
+interface IncomeRecord {
+  id: number;
+  date: string;
+  amount: number;
+  payment_method: PaymentMethod;
+}
 
-  while (cur <= last) {
-    arr.push(cur.toISOString().slice(0, 10));
-    cur.setDate(cur.getDate() + 1);
+interface ExpenseRecord {
+  id: number;
+  date: string;
+  amount: number;
+  payment_method: PaymentMethod;
+}
+
+/* -----------------------------------------
+   ROUTE HANDLER
+-------------------------------------------- */
+
+export async function GET(req: Request) {
+  const supabase = supabaseServer();
+  const { searchParams } = new URL(req.url);
+
+  const start = searchParams.get("start");
+  const end = searchParams.get("end");
+
+  if (!start || !end)
+    return NextResponse.json({ error: "Missing date params" }, { status: 400 });
+
+  const dateStart = `${start}T00:00:00`;
+  const dateEnd = `${end}T23:59:59`;
+
+  /* -----------------------------------------
+     1. PAYMENT RECORDS (JOIN orders.date)
+  -------------------------------------------- */
+  const { data: payments, error: payErr } = await supabase
+    .from("payment_records")
+    .select(
+      `
+        id,
+        order_id,
+        method,
+        amount,
+        orders (
+          date
+        )
+      `
+    )
+    .gte("orders.date", dateStart)
+    .lte("orders.date", dateEnd);
+
+  if (payErr) {
+    console.error(payErr);
+    return NextResponse.json(
+      { error: "Failed to load payment records" },
+      { status: 500 }
+    );
   }
 
-  return arr;
+  const paymentsArr = (payments || []) as PaymentRecord[];
+
+  /* -----------------------------------------
+     2. INCOMES
+  -------------------------------------------- */
+  const { data: incomes, error: incErr } = await supabase
+    .from("incomes")
+    .select("*")
+    .gte("date", dateStart)
+    .lte("date", dateEnd);
+
+  if (incErr) {
+    console.error(incErr);
+    return NextResponse.json(
+      { error: "Failed to load incomes" },
+      { status: 500 }
+    );
+  }
+
+  const incomesArr = (incomes || []) as IncomeRecord[];
+
+  /* -----------------------------------------
+     3. EXPENSES
+  -------------------------------------------- */
+  const { data: expenses, error: expErr } = await supabase
+    .from("expenses")
+    .select("*")
+    .gte("date", dateStart)
+    .lte("date", dateEnd);
+
+  if (expErr) {
+    console.error(expErr);
+    return NextResponse.json(
+      { error: "Failed to load expenses" },
+      { status: 500 }
+    );
+  }
+
+  const expensesArr = (expenses || []) as ExpenseRecord[];
+
+  /* -----------------------------------------
+     4. SUMMARY
+  -------------------------------------------- */
+  let totalIncomes = 0;
+  let totalExpenses = 0;
+
+  const incomeByMethod = { cash: 0, qris: 0 };
+  const expenseByMethod = { cash: 0, qris: 0 };
+
+  paymentsArr.forEach((p) => {
+    totalIncomes += p.amount;
+    incomeByMethod[p.method] += p.amount;
+  });
+
+  incomesArr.forEach((i) => {
+    totalIncomes += i.amount;
+    incomeByMethod[i.payment_method] += i.amount;
+  });
+
+  expensesArr.forEach((e) => {
+    totalExpenses += e.amount;
+    expenseByMethod[e.payment_method] += e.amount;
+  });
+
+  /* -----------------------------------------
+     5. income_rows
+  -------------------------------------------- */
+  const incomeMap: Record<string, number> = {};
+
+  paymentsArr.forEach((p) => {
+    const date = p.orders?.date?.slice(0, 10) ?? "unknown";
+    const key = `${date}|${p.method}`;
+    incomeMap[key] = (incomeMap[key] || 0) + p.amount;
+  });
+
+  incomesArr.forEach((i) => {
+    const date = i.date.slice(0, 10);
+    const key = `${date}|${i.payment_method}`;
+    incomeMap[key] = (incomeMap[key] || 0) + i.amount;
+  });
+
+  const income_rows = Object.entries(incomeMap).map(([key, total]) => {
+    const [date, method] = key.split("|");
+    return {
+      date,
+      payment_method: method as PaymentMethod,
+      total,
+    };
+  });
+
+  /* -----------------------------------------
+     6. expense_rows
+  -------------------------------------------- */
+  const expenseMap: Record<string, number> = {};
+
+  expensesArr.forEach((e) => {
+    const date = e.date.slice(0, 10);
+    const key = `${date}|${e.payment_method}`;
+    expenseMap[key] = (expenseMap[key] || 0) + e.amount;
+  });
+
+  const expense_rows = Object.entries(incomeMap).map(([key, total]) => {
+    const [date, method] = key.split("|");
+    return {
+      date,
+      payment_method: method as PaymentMethod,
+      total,
+    };
+  });
+
+  /* -----------------------------------------
+     7. DAILY RECAP
+  -------------------------------------------- */
+  const dailyMap: Record<
+    string,
+    {
+      income_cash: number;
+      income_qris: number;
+      expense_cash: number;
+      expense_qris: number;
+    }
+  > = {};
+
+  function ensureDay(d: string) {
+    dailyMap[d] ??= {
+      income_cash: 0,
+      income_qris: 0,
+      expense_cash: 0,
+      expense_qris: 0,
+    };
+  }
+
+  paymentsArr.forEach((p) => {
+    const d = p.orders?.date?.slice(0, 10) ?? "unknown";
+    ensureDay(d);
+    dailyMap[d][`income_${p.method}`] += p.amount;
+  });
+
+  incomesArr.forEach((i) => {
+    const d = i.date.slice(0, 10);
+    ensureDay(d);
+    dailyMap[d][`income_${i.payment_method}`] += i.amount;
+  });
+
+  expensesArr.forEach((e) => {
+    const d = e.date.slice(0, 10);
+    ensureDay(d);
+    dailyMap[d][`expense_${e.payment_method}`] += e.amount;
+  });
+
+  const daily = Object.entries(dailyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, d]) => ({
+      date,
+      income_cash: d.income_cash,
+      income_qris: d.income_qris,
+      total_income: d.income_cash + d.income_qris,
+      expense_cash: d.expense_cash,
+      expense_qris: d.expense_qris,
+      total_expense: d.expense_cash + d.expense_qris,
+      net: d.income_cash + d.income_qris - (d.expense_cash + d.expense_qris),
+    }));
+
+  /* -----------------------------------------
+     8. FINAL RETURN
+  -------------------------------------------- */
+  return NextResponse.json({
+    start,
+    end,
+    summary: {
+      total_incomes: totalIncomes,
+      total_expenses: totalExpenses,
+      income_by_method: incomeByMethod,
+      expense_by_method: expenseByMethod,
+      final_balance: totalIncomes - totalExpenses,
+    },
+    income_rows,
+    expense_rows,
+    daily,
+  });
 }

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -35,7 +34,6 @@ type Product = {
 type Member = {
   id: number;
   name: string;
-  whatsapp_number?: string;
 };
 
 type OrderItem = {
@@ -46,12 +44,29 @@ type OrderItem = {
 
 export default function OrderForm({ initialData, isEdit = false }: any) {
   const router = useRouter();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [items, setItems] = useState<OrderItem[]>([]);
+
+  // ---------------------------------------------
+  // INITIAL DATA (FIX)
+  // ---------------------------------------------
+  const [items, setItems] = useState<OrderItem[]>(
+    initialData?.order_items?.map((i: any) => ({
+      product_id: i.product_id,
+      quantity: i.quantity,
+      price: i.price,
+    })) ?? []
+  );
+
   const [payments, setPayments] = useState<
     { method: string; amount: number }[]
-  >([{ method: "cash", amount: 0 }]);
+  >(
+    initialData?.payment_records?.map((p: any) => ({
+      method: p.method,
+      amount: p.amount,
+    })) ?? [{ method: "cash", amount: 0 }]
+  );
 
   const [memberId, setMemberId] = useState<number | null>(
     initialData?.member_id ?? null
@@ -67,7 +82,9 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch products & members
+  // ---------------------------------------------
+  // FETCH products & members
+  // ---------------------------------------------
   useEffect(() => {
     Promise.all([fetch(`/api/products`), fetch(`/api/members`)]).then(
       async ([pRes, mRes]) => {
@@ -77,7 +94,7 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
     );
   }, []);
 
-  // Convert ISO -> local input
+  // Convert ISO to local input form
   function isoToLocal(iso: string) {
     const d = new Date(iso);
     const offset = d.getTimezoneOffset();
@@ -94,7 +111,6 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
   // Add item
   const handleAddItem = () => {
     if (!newItemProductId) return alert("Select product");
-
     const p = products.find((x) => x.id === newItemProductId);
     if (!p) return;
 
@@ -102,6 +118,7 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
       ...items,
       { product_id: p.id, quantity: newItemQuantity, price: p.price },
     ]);
+
     setNewItemProductId(0);
     setNewItemQuantity(1);
   };
@@ -174,10 +191,8 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
               </SelectTrigger>
 
               <SelectContent>
-                {/* Walk-in Customer */}
                 <SelectItem value="none">Walk-in Customer</SelectItem>
 
-                {/* Members */}
                 {members.map((m) => (
                   <SelectItem key={m.id} value={m.id.toString()}>
                     {m.name}
@@ -193,7 +208,7 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
             <Input
               type="datetime-local"
               value={isoToLocal(date)}
-              onChange={(e) => setDate(localToIso(e.target.value))}
+              onChange={(e) => setDate(e.target.value)}
             />
           </div>
 
@@ -247,6 +262,7 @@ export default function OrderForm({ initialData, isEdit = false }: any) {
                         <TableHead className="text-center">Action</TableHead>
                       </TableRow>
                     </TableHeader>
+
                     <TableBody>
                       {items.map((item, idx) => {
                         const p = products.find(
