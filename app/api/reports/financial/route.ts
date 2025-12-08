@@ -14,7 +14,7 @@ interface PaymentRecord {
   amount: number;
   orders: {
     date: string | null;
-  } | null;
+  }[];
 }
 
 interface IncomeRecord {
@@ -75,7 +75,13 @@ export async function GET(req: Request) {
     );
   }
 
-  const paymentsArr = (payments || []) as PaymentRecord[];
+  const paymentsArr: PaymentRecord[] = (payments || []).map((p: any) => ({
+    id: p.id,
+    order_id: p.order_id,
+    method: p.method,
+    amount: p.amount,
+    orders: Array.isArray(p.orders) ? p.orders : [],
+  }));
 
   /* -----------------------------------------
      2. INCOMES
@@ -145,7 +151,7 @@ export async function GET(req: Request) {
   const incomeMap: Record<string, number> = {};
 
   paymentsArr.forEach((p) => {
-    const date = p.orders?.date?.slice(0, 10) ?? "unknown";
+    const date = p.orders?.[0]?.date?.slice(0, 10) ?? "unknown";
     const key = `${date}|${p.method}`;
     incomeMap[key] = (incomeMap[key] || 0) + p.amount;
   });
@@ -208,7 +214,7 @@ export async function GET(req: Request) {
   }
 
   paymentsArr.forEach((p) => {
-    const d = p.orders?.date?.slice(0, 10) ?? "unknown";
+    const d = p.orders?.[0]?.date?.slice(0, 10) ?? "unknown";
     ensureDay(d);
     dailyMap[d][`income_${p.method}`] += p.amount;
   });
